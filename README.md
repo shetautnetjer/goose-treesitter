@@ -1,5 +1,19 @@
 # goose-treesitter
 
+**In plain words:** "find every place in my code that looks like *this*",
+by the code's structure rather than its text, the way the tool ast-grep does.
+For example `$X.unwrap()` finds every `.unwrap()` call in Rust, whatever is in
+front of it, and can rewrite all of them in one go. It understands
+TypeScript, JavaScript, Python, Rust, Java, Kotlin, C, C++ and CUDA, and
+checks the same patterns as ast-grep with the same results.
+
+**Status (2026-10-26):** 52 standalone checks pass (`scripts/test.sh`).
+Swan checks its matches against ast-grep's on real projects (identical on
+every case it tests). Searching a 2,361-file project takes about 0.14 s, on
+all cores. Building it the first time takes about 8 s, then it is cached. It
+builds all ten grammars even if you use one; a per-language split (one
+package per language) is planned for when a one-language user needs it.
+
 Structural search and rewrite for [Goose](https://aardappel.github.io/goose/)
 programs, ast-grep style, on [tree-sitter](https://tree-sitter.github.io)
 trees: TypeScript/TSX, JavaScript, Python, Rust, Java, Kotlin, C, C++ and
@@ -18,7 +32,7 @@ an if with an else).
 In your root file:
 
 ```goose
-import treesitter from "shetautnetjer/goose-treesitter@v0.1.1";
+import treesitter from "shetautnetjer/goose-treesitter@v0.1.2";
 ```
 
 ```goose
