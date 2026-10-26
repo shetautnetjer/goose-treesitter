@@ -1,0 +1,4 @@
+Copied from https://github.com/tree-sitter-grammars/tree-sitter-cuda at v0.21.2 (d58080a327756e4d1d16ec329ba7cb2048f6c6cd):
+LICENSE, src/parser.c, src/scanner.c, src/tree_sitter/. Copied rather than a submodule
+because that repository holds a nested submodule with no URL, which a
+recursive clone (goose fetch) cannot follow.

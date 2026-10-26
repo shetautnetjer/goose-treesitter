@@ -49,7 +49,10 @@ once per C compiler and caches them.
 ## Licenses
 
 This package: MIT. tree-sitter and every grammar under `vendor/` are MIT
-(their own LICENSE files). The pattern syntax and matching rules follow
+(their own LICENSE files). The CUDA grammar's generated sources are copied in
+(`vendor/tree-sitter-cuda/SOURCE` says from where) rather than a submodule,
+because its repository holds a nested submodule a recursive clone cannot
+follow. The pattern syntax and matching rules follow
 ast-grep (MIT); no ast-grep code is used. Swan
 (https://github.com/shetautnetjer/Swan) is its first user, and checks its
 matches against ast-grep's.
