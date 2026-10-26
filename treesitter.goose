@@ -5,7 +5,7 @@
 // text both times. The grammars and the runtime are C (ts_shim.c), reached
 // through an opaque handle and plain slices.
 //
-//   import treesitter from "shetautnetjer/goose-treesitter@v0.1.0";   // root file
+//   import treesitter from "shetautnetjer/goose-treesitter@v0.1.1";   // root file
 //   var why: u8[>..] = [];
 //   guard treesitter::compile("rust", "$X.unwrap()", why) else { ... }
 //   treesitter::search(source_text) { node =>

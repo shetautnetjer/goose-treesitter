@@ -18,7 +18,7 @@ an if with an else).
 In your root file:
 
 ```goose
-import treesitter from "shetautnetjer/goose-treesitter@v0.1.0";
+import treesitter from "shetautnetjer/goose-treesitter@v0.1.1";
 ```
 
 ```goose
@@ -42,9 +42,67 @@ treesitter::search(text) { node =>
 - `parse(lang, text, nodes)` gives the raw tree as flat ints, 8 per node
   (symbol, flags, start and end byte, row, column, first child, next sibling).
 
-See `examples/unwraps.goose`. Fetch with submodules: the grammars are git
-submodules under `vendor/`, each pinned to a release tag; Goose builds them
-once per C compiler and caches them.
+See `examples/unwraps.goose`. A local checkout can be used directly with
+`import treesitter from "../goose-treesitter";` in a program's root file.
+Use `git clone --recurse-submodules` when cloning the package yourself:
+the runtime and most grammars are pinned submodules under `vendor/`.
+The CUDA grammar's sources are copied in, as described below.
+
+## Package and build boundary
+
+The pattern matcher, capture/template handling and search worker pool are
+Goose code in `treesitter.goose`. The parser engine, generated grammars and
+FFI shim are C. This is an independently importable Goose package with a C
+parser backend, not a rewrite of tree-sitter in Goose. It needs no Swan,
+SQLite, SCIP indexer, language server, Node or Rust toolchain to search text.
+
+Plan for **all ten bundled grammars** (TypeScript and TSX count separately),
+their scanners and the tree-sitter runtime to compile on a cold build.
+With the installed Goose v2026.3 compiler, even an otherwise unused
+`treesitter` import triggers that native build; using only
+`language_of_path` does not avoid it. Choosing `"rust"` or `"python"` in
+`compile` selects the parser at run time; it does not reduce the set of C
+sources in `treesitter.build`. The package does not currently offer
+per-grammar build selection.
+
+Goose keeps native build artifacts in its cache (`GOOSE_HOME`, otherwise
+`~/.goose`) and reuses them while the cache inputs and toolchain match.
+Deleting that cache or changing its inputs can require rebuilding native
+code. The Goose matcher still participates in each consumer's Goose build,
+and an executable still links the required native library. A warm build
+therefore avoids repeated grammar compilation; it is not a zero-cost build
+or a prebuilt package download.
+
+`compile` replaces the current pattern, and `search` replaces the current
+match/capture state. Read match accessors and fill templates inside the
+callback; copy any text that must outlive it. Do not nest `compile` or
+`search` inside a search callback. `search_files` manages its own worker
+threads and returns matches in input-file order. A failed `compile` must be
+handled before searching. These APIs expose syntax, not type resolution or
+compiler diagnostics.
+
+## Standalone tests
+
+With Goose v2026.3 and a C compiler already installed:
+
+```bash
+GOOSE=/path/to/goose scripts/test.sh
+```
+
+The test program imports this checkout via `from ".."` and builds offline;
+it does not fetch a released package. The runner uses `.test-build/` for its executable and
+temporary fixture files, and defaults `GOOSE_HOME` to `.test-cache/`.
+Override `GOOSE_HOME` or `TEST_BUILD_DIR` to keep artifacts elsewhere. The
+first run compiles the native parser bundle; later runs can reuse it.
+
+The suite checks every grammar on a small valid snippet, exact captures,
+zero-based positions and byte ranges, rewrite templates, repeated and
+anonymous metavariables, empty variadic captures, nonmatches, rejected
+patterns and recovery, and worker output ordering with a missing file.
+It uses no external indexers or servers. These are package contract checks;
+they do not establish full ast-grep parity or validate the target languages
+with their compilers. Swan's separate integration suite covers its use of
+the package in a code map.
 
 ## Licenses
 
