@@ -1,0 +1,30 @@
+// Tree-sitter's runtime and the grammars (git submodules under vendor/, each
+// pinned to a release tag), behind ts_shim.c. Each file under grammars/
+// includes one of their sources so every object gets a name of its own (a
+// package's objects are named after their sources). All listed sources
+// build for an importing consumer with a cold native cache; later builds reuse
+// Goose's native cache while its inputs and toolchain remain unchanged.
+c_sources = ["ts_shim.c",
+             "grammars/c_parser.c",
+             "grammars/cpp_parser.c",
+             "grammars/cpp_scanner.c",
+             "grammars/cuda_parser.c",
+             "grammars/cuda_scanner.c",
+             "grammars/java_parser.c",
+             "grammars/javascript_parser.c",
+             "grammars/javascript_scanner.c",
+             "grammars/kotlin_parser.c",
+             "grammars/kotlin_scanner.c",
+             "grammars/python_parser.c",
+             "grammars/python_scanner.c",
+             "grammars/runtime.c",
+             "grammars/rust_parser.c",
+             "grammars/rust_scanner.c",
+             "grammars/tsx_parser.c",
+             "grammars/tsx_scanner.c",
+             "grammars/typescript_parser.c",
+             "grammars/typescript_scanner.c"];
+c_include = ["vendor/tree-sitter/lib/include", "vendor/tree-sitter/lib/src",
+             "vendor/tree-sitter-typescript/typescript/src"];
+c_libs = ["pthread"];
+exclude = ["examples", "tests", "vendor"];
