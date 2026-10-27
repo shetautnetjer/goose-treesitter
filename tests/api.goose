@@ -120,5 +120,98 @@ fn main() {
         format(file_results, idx, ":", row, ":", col, ":", caps, "\n");
     };
     check(file_results == "0:0:9:X\x1ffirst\x1e\n2:0:9:X\x1flast\x1e\n", "worker results preserve file order, indexes and captures");
+
+    // A `$` inside a string is text, not a metavariable.
+    compile_ok("typescript", "log(\"$HOME\")");
+    matches.clear();
+    treesitter::search("log(\"$HOME\"); log(\"other\");") { node => format(matches, treesitter::match_text(node), "\n"); };
+    check(matches == "log(\"$HOME\")\n", "a $ inside a string matches only that string");
+
+    // A quote in a character literal or a comment does not start a string.
+    compile_ok("rust", "foo('\"', $X)");
+    captures.clear();
+    treesitter::search("fn f() { foo('\"', value); }") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "a quote in a character literal leaves later metavariables alone");
+    compile_ok("typescript", "foo(/* \" */ $X)");
+    count = 0;
+    treesitter::search("foo(value);") { node => count++; };
+    check(count == 1, "a quote in a pattern comment leaves later metavariables alone");
+
+    // `//` is division in Python, and inside a string it is text: neither
+    // starts a comment that would swallow the next metavariable.
+    compile_ok("python", "foo($X // 2, $Y)");
+    captures.clear();
+    treesitter::search("foo(a // 2, b)\n") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=a\nY=b\n", "Python floor division is not a comment");
+    compile_ok("typescript", "foo('https://example', $X)");
+    captures.clear();
+    treesitter::search("foo('https://example', value);") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "a // inside a single-quoted string is not a comment");
+    compile_ok("python", "foo('''it's text''', $X)");
+    captures.clear();
+    treesitter::search("foo('''it's text''', value)\n") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "a Python triple-quoted string may hold its quote");
+    compile_ok("kotlin", "foo(\"\"\"say \"hi\"\"\"\", $X)");
+    captures.clear();
+    treesitter::search("fun f() { foo(\"\"\"say \"hi\"\"\"\", value) }\n") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "a Kotlin raw string may hold quotes");
+    compile_ok("python", "foo(\"\"\"a\"\"\"\"\"\"b\"\"\", $X)");
+    captures.clear();
+    treesitter::search("foo(\"\"\"a\"\"\"\"\"\"b\"\"\", value)\n") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "adjacent Python triple-quoted strings close at their first three quotes");
+    compile_ok("java", "foo(\"\"\"\n text \\\"\"\" more\n\"\"\", $X)");
+    captures.clear();
+    treesitter::search("class C { void f() { foo(\"\"\"\n text \\\"\"\" more\n\"\"\", value); } }") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "an escaped quote in a Java text block does not end it");
+    compile_ok("rust", "foo(r#\"a \"b\" c\"#, $X)");
+    captures.clear();
+    treesitter::search("fn f() { foo(r#\"a \"b\" c\"#, value); }") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "a Rust raw string may hold quotes");
+    compile_ok("python", "f($X)  # a \" in a comment");
+    count = 0;
+    treesitter::search("f(value)\n") { node => count++; };
+    check(count == 1, "a quote in a Python comment leaves the pattern alone");
+
+    // Words in a pattern's comments are not required in the source.
+    compile_ok("typescript", "foo(/* explanation */ $X)");
+    count = 0;
+    treesitter::search("foo(value);") { node => count++; };
+    check(count == 1, "a pattern comment does not hide a match");
+
+    // Captured source may hold the bytes the worker results once used as separators.
+    compile_ok("rust", "$X.unwrap()");
+    let odd_path = str(a[1], "/odd.rs");
+    check(write_file(odd_path, "fn f() { s(\"a\x1db 1\x1f\").unwrap(); t.unwrap(); }"), "write control-byte fixture");
+    file_results.clear();
+    treesitter::search_files(str(odd_path, "\n")) { idx, start, end, row, col, caps =>
+        format(file_results, idx, ":", col, ":", caps, "\n");
+    };
+    check(file_results == "0:9:X\x1fs(\"a\x1db 1\x1f\")\x1e\n0:31:X\x1ft\x1e\n", "control bytes in captures keep every match whole");
+
+    // A path that cannot be read whole (a directory) parses to no tree.
+    var handles: i64[>..] = [];
+    var batch: u8[>..] = [];
+    batch.append(a[1]); batch.push(0);
+    batch.append(last_path); batch.push(0);
+    check(treesitter::parse_files("rust", batch, handles) && handles.len == 2 && handles[0] == 0 && handles[1] != 0,
+          "an unreadable path is skipped; the next file still parses");
+    compile_ok("rust", "$X.unwrap()");
+    treesitter::search_tree(handles[1], "fn f() { last.unwrap(); }") { node => count++; };
     print("PASS: ", checks, " standalone tree-sitter checks");
 }
