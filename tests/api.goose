@@ -120,5 +120,37 @@ fn main() {
         format(file_results, idx, ":", row, ":", col, ":", caps, "\n");
     };
     check(file_results == "0:0:9:X\x1ffirst\x1e\n2:0:9:X\x1flast\x1e\n", "worker results preserve file order, indexes and captures");
+
+    // A `$` inside a string is text, not a metavariable.
+    compile_ok("typescript", "log(\"$HOME\")");
+    matches.clear();
+    treesitter::search("log(\"$HOME\"); log(\"other\");") { node => format(matches, treesitter::match_text(node), "\n"); };
+    check(matches == "log(\"$HOME\")\n", "a $ inside a string matches only that string");
+
+    // Words in a pattern's comments are not required in the source.
+    compile_ok("typescript", "foo(/* explanation */ $X)");
+    count = 0;
+    treesitter::search("foo(value);") { node => count++; };
+    check(count == 1, "a pattern comment does not hide a match");
+
+    // Captured source may hold the bytes the worker results once used as separators.
+    compile_ok("rust", "$X.unwrap()");
+    let odd_path = str(a[1], "/odd.rs");
+    check(write_file(odd_path, "fn f() { s(\"a\x1db 1\x1f\").unwrap(); t.unwrap(); }"), "write control-byte fixture");
+    file_results.clear();
+    treesitter::search_files(str(odd_path, "\n")) { idx, start, end, row, col, caps =>
+        format(file_results, idx, ":", col, ":", caps, "\n");
+    };
+    check(file_results == "0:9:X\x1fs(\"a\x1db 1\x1f\")\x1e\n0:31:X\x1ft\x1e\n", "control bytes in captures keep every match whole");
+
+    // A path that cannot be read whole (a directory) parses to no tree.
+    var handles: i64[>..] = [];
+    var batch: u8[>..] = [];
+    batch.append(a[1]); batch.push(0);
+    batch.append(last_path); batch.push(0);
+    check(treesitter::parse_files("rust", batch, handles) && handles.len == 2 && handles[0] == 0 && handles[1] != 0,
+          "an unreadable path is skipped; the next file still parses");
+    compile_ok("rust", "$X.unwrap()");
+    treesitter::search_tree(handles[1], "fn f() { last.unwrap(); }") { node => count++; };
     print("PASS: ", checks, " standalone tree-sitter checks");
 }

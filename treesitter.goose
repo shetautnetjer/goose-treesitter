@@ -90,11 +90,21 @@ var p_words: u8[>..];           // the pattern's own words, one per line: a file
 let MV = "__swan_mv_";          // $X becomes __swan_mv_X
 let MVM = "__swan_mvm_";        // $$$X becomes __swan_mvm_X
 
-// $X and $$$X as identifiers every grammar accepts.
+// $X and $$$X as identifiers every grammar accepts. Inside a "string" a
+// `$` is text (`printf("$HOME")` matches only that string), so it is kept.
 fn rename_metavars(pattern: const u8[:], out: u8[>..]&) {
     var i = 0;
+    var quoted = false;
     while i < pattern.len {
         let c = pattern[i];
+        if quoted {
+            out.push(c);
+            if c == '\\' && i + 1 < pattern.len { out.push(pattern[i + 1]); i += 2; continue; }
+            if c == '"' { quoted = false; }
+            i++;
+            continue;
+        }
+        if c == '"' { quoted = true; out.push(c); i++; continue; }
         if c != '$' { out.push(c); i++; continue; }
         var d = 0;
         while i + d < pattern.len && pattern[i + d] == '$' { d++; }
@@ -147,16 +157,6 @@ fn context(k: i64, pre: u8[>..]&, post: u8[>..]&) {
 // no grammar or the pattern does not parse as code.
 fn compile(lang: const u8[:], pattern: const u8[:], why: u8[>..]&) -> bool {
     p_words.clear();
-    var i = 0;
-    while i < pattern.len {
-        let c = pattern[i];
-        let starts = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
-        if !starts { i++; continue; }
-        var e = i;
-        while e < pattern.len && is_word(pattern[e..e + 1]) { e++; }
-        if i == 0 || pattern[i - 1] != '$' { p_words.append(pattern[i..e]); p_words.push('\n'); }
-        i = e;
-    }
     var renamed: u8[>..] = [];
     rename_metavars(trim(pattern), renamed);
     p_lang.clear();
@@ -198,6 +198,25 @@ fn compile(lang: const u8[:], pattern: const u8[:], why: u8[>..]&) -> bool {
                 at = w;
             }
             p_root = at;
+            // The words a file must hold to match: those of the pattern's
+            // own leaves, not its comments (skipped in matching) nor its
+            // metavariables.
+            for i in 0..n {
+                if first(p_nodes, i) < 0 && (flags(p_nodes, i) & (F_EXTRA | F_ERROR)) != F_EXTRA &&
+                   start(p_nodes, i) >= a && end(p_nodes, i) <= b {
+                    let leaf = text[start(p_nodes, i)..end(p_nodes, i)];
+                    var j = 0;
+                    while j < leaf.len {
+                        let c = leaf[j];
+                        let starts = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+                        if !starts { j++; continue; }
+                        var e = j;
+                        while e < leaf.len && is_word(leaf[e..e + 1]) { e++; }
+                        if !starts_with(leaf[j..e], "__swan_mv") { p_words.append(leaf[j..e]); p_words.push('\n'); }
+                        j = e;
+                    }
+                }
+            }
             return true;
         }
     }
@@ -392,8 +411,9 @@ fn fill_template(template: const u8[:], out: u8[>..]&) {
 
 struct SearchJob { idx: i64, path: u8[>..] }
 
-// One file's matches, each "start end row column" 0x1f, then its captures
-// as name 0x1f text 0x1e, and a 0x1d after each match.
+// One file's matches, each "start end row column length" 0x1f, then
+// `length` bytes of captures as name 0x1f text 0x1e. The length, not a
+// separator, ends a match: captured source can hold any byte.
 struct SearchDone { idx: i64, data: u8[>..] }
 
 thread_fn search_worker() {
@@ -409,15 +429,17 @@ thread_fn search_worker() {
                 for i in 0..t_nodes.len / R {
                     nb = 0;
                     if (flags(t_nodes, i) & F_EXTRA) == 0 && match_node(p_root, i) {
-                        format(done.data, start(t_nodes, i), " ", end(t_nodes, i), " ", row(t_nodes, i), " ", col(t_nodes, i));
-                        done.data.push(0x1f);
+                        var caps: u8[>..] = [];
                         for k in 0..nb {
-                            done.data.append(binds[k].name[..]);
-                            done.data.push(0x1f);
-                            done.data.append(span_text(binds[k].a, binds[k].b));
-                            done.data.push(0x1e);
+                            caps.append(binds[k].name[..]);
+                            caps.push(0x1f);
+                            caps.append(span_text(binds[k].a, binds[k].b));
+                            caps.push(0x1e);
                         }
-                        done.data.push(0x1d);
+                        format(done.data, start(t_nodes, i), " ", end(t_nodes, i), " ", row(t_nodes, i), " ", col(t_nodes, i),
+                               " ", caps.len);
+                        done.data.push(0x1f);
+                        done.data.append(caps);
                     }
                 }
             }
@@ -459,16 +481,22 @@ fn search_files<F>(paths: const u8[:]) {
     }
     for id in ids { thread_wait(id); }
     for idx in 0..n {
-        each_split(all[at[idx]..at[idx] + len[idx]], 0x1d) { one =>
-            let head_end = find(one, "\x1f");
-            if head_end > 0 {
-                let nums = split(one[..head_end], ' ');
-                let a, a_ok = parse_int(nums[0]);
-                let b, b_ok = parse_int(nums[1]);
-                let r, r_ok = parse_int(nums[2]);
-                let c, c_ok = parse_int(nums[3]);
-                F(idx, a, b, r, c, one[head_end + 1..]);
-            }
-        };
+        let data = all[at[idx]..at[idx] + len[idx]];
+        var pos = 0;
+        while pos < data.len {
+            let head_end = find(data[pos..], "\x1f");
+            guard head_end > 0 else { break; }
+            let nums = split(data[pos..pos + head_end], ' ');
+            guard nums.len == 5 else { break; }
+            let a, a_ok = parse_int(nums[0]);
+            let b, b_ok = parse_int(nums[1]);
+            let r, r_ok = parse_int(nums[2]);
+            let c, c_ok = parse_int(nums[3]);
+            let cl, l_ok = parse_int(nums[4]);
+            let caps_at = pos + head_end + 1;
+            guard a_ok && b_ok && r_ok && c_ok && l_ok && cl >= 0 && caps_at + cl <= data.len else { break; }
+            F(idx, a, b, r, c, data[caps_at..caps_at + cl]);
+            pos = caps_at + cl;
+        }
     }
 }

@@ -156,14 +156,18 @@ static void *batch_worker(void *arg) {
         int64_t i = b->next++;
         pthread_mutex_unlock(&b->mu);
         if (i >= b->n) break;
+        /* A file that cannot be sized and read whole (a FIFO, a directory,
+           one over 4 GiB) keeps handle 0: unreadable. */
         FILE *f = fopen(b->paths[i], "rb");
         if (!f) continue;
-        fseek(f, 0, SEEK_END);
-        long len = ftell(f);
-        fseek(f, 0, SEEK_SET);
+        long len = fseek(f, 0, SEEK_END) == 0 ? ftell(f) : -1;
+        if (len < 0 || (unsigned long)len > UINT32_MAX || fseek(f, 0, SEEK_SET) != 0) { fclose(f); continue; }
         char *buf = malloc(len > 0 ? (size_t)len : 1);
+        if (!buf) { fclose(f); continue; }
         size_t got = fread(buf, 1, (size_t)len, f);
+        bool failed = ferror(f) != 0;
         fclose(f);
+        if (failed) { free(buf); continue; }
         b->handles[i] = (int64_t)(intptr_t)ts_parser_parse_string(p, NULL, buf, (uint32_t)got);
         ts_parser_reset(p);
         free(buf);
