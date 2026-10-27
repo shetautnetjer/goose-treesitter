@@ -93,7 +93,8 @@ let MVM = "__swan_mvm_";        // $$$X becomes __swan_mvm_X
 // $X and $$$X as identifiers every grammar accepts. A `$` inside a string
 // literal is text (`printf("$HOME")` matches only that string), so it is
 // kept. The pattern's own language says what a string and a comment are:
-// "..." everywhere; '...' and `...` strings in Python and JS/TS, where in
+// "..." everywhere, with Python/Kotlin/Java triple quotes and Rust raw
+// strings; '...' and `...` strings in Python and JS/TS, where in
 // the C family and Rust '"' is a character (and 'a a Rust lifetime);
 // // and /* */ comments except in Python, which has # (and // for division).
 fn rename_metavars(lang: const u8[:], pattern: const u8[:], out: u8[>..]&) {
@@ -109,6 +110,42 @@ fn rename_metavars(lang: const u8[:], pattern: const u8[:], out: u8[>..]&) {
             var e = i + (if py { 1 } else { 2 });
             while e < pattern.len && !(if line { pattern[e] == '\n' } else { pattern[e] == '/' && pattern[e - 1] == '*' && e > i + 2 }) { e++; }
             if e < pattern.len && !line { e++; }
+            out.append(pattern[i..e]);
+            i = e;
+            continue;
+        }
+        // A Rust raw string, r"..." or r#"..."#, which may hold quotes.
+        if lang == "rust" && c == 'r' && (i == 0 || !is_word(pattern[i - 1..i])) {
+            var h = i + 1;
+            while h < pattern.len && pattern[h] == '#' { h++; }
+            if h < pattern.len && pattern[h] == '"' {
+                let hashes = h - i - 1;
+                var e = h + 1;
+                loop {
+                    guard e < pattern.len else { break; }
+                    if pattern[e] == '"' {
+                        var k = 0;
+                        while k < hashes && e + 1 + k < pattern.len && pattern[e + 1 + k] == '#' { k++; }
+                        if k == hashes { e += 1 + hashes; break; }
+                    }
+                    e++;
+                }
+                out.append(pattern[i..min(e, pattern.len)]);
+                i = min(e, pattern.len);
+                continue;
+            }
+        }
+        // A triple-quoted string (Python, and Kotlin and Java """), which may
+        // hold its quote alone.
+        let triple_ok = py || ((lang == "kotlin" || lang == "java") && c == '"');
+        if triple_ok && (c == '"' || c == '\'') && i + 2 < pattern.len && pattern[i + 1] == c && pattern[i + 2] == c {
+            var e = i + 3;
+            while e < pattern.len && !(e + 2 < pattern.len && pattern[e] == c && pattern[e + 1] == c && pattern[e + 2] == c) {
+                e += (if pattern[e] == '\\' && py { 2 } else { 1 });
+            }
+            // A run of more than three quotes closes with its last three.
+            while e + 3 < pattern.len && pattern[e + 3] == c { e++; }
+            e = min(e + 3, pattern.len);
             out.append(pattern[i..e]);
             i = e;
             continue;

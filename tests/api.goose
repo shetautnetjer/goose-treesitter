@@ -153,6 +153,24 @@ fn main() {
         treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
     };
     check(captures == "X=value\n", "a // inside a single-quoted string is not a comment");
+    compile_ok("python", "foo('''it's text''', $X)");
+    captures.clear();
+    treesitter::search("foo('''it's text''', value)\n") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "a Python triple-quoted string may hold its quote");
+    compile_ok("kotlin", "foo(\"\"\"say \"hi\"\"\"\", $X)");
+    captures.clear();
+    treesitter::search("fun f() { foo(\"\"\"say \"hi\"\"\"\", value) }\n") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "a Kotlin raw string may hold quotes");
+    compile_ok("rust", "foo(r#\"a \"b\" c\"#, $X)");
+    captures.clear();
+    treesitter::search("fn f() { foo(r#\"a \"b\" c\"#, value); }") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "a Rust raw string may hold quotes");
     compile_ok("python", "f($X)  # a \" in a comment");
     count = 0;
     treesitter::search("f(value)\n") { node => count++; };
