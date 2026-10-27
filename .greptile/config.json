@@ -1,0 +1,25 @@
+{
+  "autoReview": ["open"],
+  "effort": "base",
+  "strictness": 2,
+  "commentTypes": ["logic", "syntax"],
+  "fixWithAI": true,
+  "ignorePatterns": "vendor/**\ngrammars/**",
+  "context": {
+    "repos": ["shetautnetjer/Swan"]
+  },
+  "rules": [
+    {
+      "id": "result-framing",
+      "rule": "Results passed from C to Goose must survive any byte in the source text, including the 0x1d-0x1f separator bytes; escape or length-prefix fields instead of relying on separators.",
+      "scope": ["ts_shim.c", "treesitter.goose"],
+      "severity": "medium"
+    },
+    {
+      "id": "checked-libc-calls",
+      "rule": "Check the return value of every libc call that can fail (fseek, ftell, fread, malloc, realloc) before using its result.",
+      "scope": ["*.c"],
+      "severity": "medium"
+    }
+  ]
+}
