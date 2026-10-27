@@ -90,32 +90,39 @@ var p_words: u8[>..];           // the pattern's own words, one per line: a file
 let MV = "__swan_mv_";          // $X becomes __swan_mv_X
 let MVM = "__swan_mvm_";        // $$$X becomes __swan_mvm_X
 
-// $X and $$$X as identifiers every grammar accepts. Inside a "string" a
-// `$` is text (`printf("$HOME")` matches only that string), so it is kept.
-// Comments and character literals ('"') are copied as they are, so a quote
-// in one does not start a string.
-fn rename_metavars(pattern: const u8[:], out: u8[>..]&) {
+// $X and $$$X as identifiers every grammar accepts. A `$` inside a string
+// literal is text (`printf("$HOME")` matches only that string), so it is
+// kept. The pattern's own language says what a string and a comment are:
+// "..." everywhere; '...' and `...` strings in Python and JS/TS, where in
+// the C family and Rust '"' is a character (and 'a a Rust lifetime);
+// // and /* */ comments except in Python, which has # (and // for division).
+fn rename_metavars(lang: const u8[:], pattern: const u8[:], out: u8[>..]&) {
+    let py = lang == "python";
+    let js = lang == "javascript" || lang == "typescript" || lang == "tsx";
     var i = 0;
-    var quoted = false;
     while i < pattern.len {
         let c = pattern[i];
-        if quoted {
-            out.push(c);
-            if c == '\\' && i + 1 < pattern.len { out.push(pattern[i + 1]); i += 2; continue; }
-            if c == '"' { quoted = false; }
-            i++;
-            continue;
-        }
-        if c == '/' && i + 1 < pattern.len && (pattern[i + 1] == '/' || pattern[i + 1] == '*') {
-            let line = pattern[i + 1] == '/';
-            var e = i + 2;
+        // A comment, copied as it is.
+        let slash_comment = !py && c == '/' && i + 1 < pattern.len && (pattern[i + 1] == '/' || pattern[i + 1] == '*');
+        if slash_comment || (py && c == '#') {
+            let line = py || pattern[i + 1] == '/';
+            var e = i + (if py { 1 } else { 2 });
             while e < pattern.len && !(if line { pattern[e] == '\n' } else { pattern[e] == '/' && pattern[e - 1] == '*' && e > i + 2 }) { e++; }
             if e < pattern.len && !line { e++; }
             out.append(pattern[i..e]);
             i = e;
             continue;
         }
-        // 'x' or '\x', but not a Rust lifetime ('a with no closing quote).
+        // A string, copied as it is up to its unescaped closing quote.
+        if c == '"' || ((py || js) && c == '\'') || (js && c == '`') {
+            var e = i + 1;
+            while e < pattern.len && pattern[e] != c { e += (if pattern[e] == '\\' { 2 } else { 1 }); }
+            e = min(e + 1, pattern.len);
+            out.append(pattern[i..e]);
+            i = e;
+            continue;
+        }
+        // A character: 'x' or '\x', but not a Rust lifetime ('a with no closing quote).
         if c == '\'' {
             let n = if i + 2 < pattern.len && pattern[i + 2] == '\'' { 3 }
                     else if i + 3 < pattern.len && pattern[i + 1] == '\\' && pattern[i + 3] == '\'' { 4 } else { 1 };
@@ -123,7 +130,6 @@ fn rename_metavars(pattern: const u8[:], out: u8[>..]&) {
             i += n;
             continue;
         }
-        if c == '"' { quoted = true; out.push(c); i++; continue; }
         if c != '$' { out.push(c); i++; continue; }
         var d = 0;
         while i + d < pattern.len && pattern[i + d] == '$' { d++; }
@@ -177,7 +183,7 @@ fn context(k: i64, pre: u8[>..]&, post: u8[>..]&) {
 fn compile(lang: const u8[:], pattern: const u8[:], why: u8[>..]&) -> bool {
     p_words.clear();
     var renamed: u8[>..] = [];
-    rename_metavars(trim(pattern), renamed);
+    rename_metavars(lang, trim(pattern), renamed);
     p_lang.clear();
     format(p_lang, lang);
     for k in 0..5 {

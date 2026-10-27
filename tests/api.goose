@@ -139,6 +139,25 @@ fn main() {
     treesitter::search("foo(value);") { node => count++; };
     check(count == 1, "a quote in a pattern comment leaves later metavariables alone");
 
+    // `//` is division in Python, and inside a string it is text: neither
+    // starts a comment that would swallow the next metavariable.
+    compile_ok("python", "foo($X // 2, $Y)");
+    captures.clear();
+    treesitter::search("foo(a // 2, b)\n") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=a\nY=b\n", "Python floor division is not a comment");
+    compile_ok("typescript", "foo('https://example', $X)");
+    captures.clear();
+    treesitter::search("foo('https://example', value);") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "a // inside a single-quoted string is not a comment");
+    compile_ok("python", "f($X)  # a \" in a comment");
+    count = 0;
+    treesitter::search("f(value)\n") { node => count++; };
+    check(count == 1, "a quote in a Python comment leaves the pattern alone");
+
     // Words in a pattern's comments are not required in the source.
     compile_ok("typescript", "foo(/* explanation */ $X)");
     count = 0;
