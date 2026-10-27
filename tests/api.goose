@@ -127,6 +127,18 @@ fn main() {
     treesitter::search("log(\"$HOME\"); log(\"other\");") { node => format(matches, treesitter::match_text(node), "\n"); };
     check(matches == "log(\"$HOME\")\n", "a $ inside a string matches only that string");
 
+    // A quote in a character literal or a comment does not start a string.
+    compile_ok("rust", "foo('\"', $X)");
+    captures.clear();
+    treesitter::search("fn f() { foo('\"', value); }") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "a quote in a character literal leaves later metavariables alone");
+    compile_ok("typescript", "foo(/* \" */ $X)");
+    count = 0;
+    treesitter::search("foo(value);") { node => count++; };
+    check(count == 1, "a quote in a pattern comment leaves later metavariables alone");
+
     // Words in a pattern's comments are not required in the source.
     compile_ok("typescript", "foo(/* explanation */ $X)");
     count = 0;

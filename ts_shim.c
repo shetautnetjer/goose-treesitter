@@ -165,7 +165,7 @@ static void *batch_worker(void *arg) {
         char *buf = malloc(len > 0 ? (size_t)len : 1);
         if (!buf) { fclose(f); continue; }
         size_t got = fread(buf, 1, (size_t)len, f);
-        bool failed = ferror(f) != 0;
+        bool failed = ferror(f) != 0 || got != (size_t)len;   /* truncated since ftell, say */
         fclose(f);
         if (failed) { free(buf); continue; }
         b->handles[i] = (int64_t)(intptr_t)ts_parser_parse_string(p, NULL, buf, (uint32_t)got);

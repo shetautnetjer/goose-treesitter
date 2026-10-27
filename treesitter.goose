@@ -92,6 +92,8 @@ let MVM = "__swan_mvm_";        // $$$X becomes __swan_mvm_X
 
 // $X and $$$X as identifiers every grammar accepts. Inside a "string" a
 // `$` is text (`printf("$HOME")` matches only that string), so it is kept.
+// Comments and character literals ('"') are copied as they are, so a quote
+// in one does not start a string.
 fn rename_metavars(pattern: const u8[:], out: u8[>..]&) {
     var i = 0;
     var quoted = false;
@@ -102,6 +104,23 @@ fn rename_metavars(pattern: const u8[:], out: u8[>..]&) {
             if c == '\\' && i + 1 < pattern.len { out.push(pattern[i + 1]); i += 2; continue; }
             if c == '"' { quoted = false; }
             i++;
+            continue;
+        }
+        if c == '/' && i + 1 < pattern.len && (pattern[i + 1] == '/' || pattern[i + 1] == '*') {
+            let line = pattern[i + 1] == '/';
+            var e = i + 2;
+            while e < pattern.len && !(if line { pattern[e] == '\n' } else { pattern[e] == '/' && pattern[e - 1] == '*' && e > i + 2 }) { e++; }
+            if e < pattern.len && !line { e++; }
+            out.append(pattern[i..e]);
+            i = e;
+            continue;
+        }
+        // 'x' or '\x', but not a Rust lifetime ('a with no closing quote).
+        if c == '\'' {
+            let n = if i + 2 < pattern.len && pattern[i + 2] == '\'' { 3 }
+                    else if i + 3 < pattern.len && pattern[i + 1] == '\\' && pattern[i + 3] == '\'' { 4 } else { 1 };
+            out.append(pattern[i..i + n]);
+            i += n;
             continue;
         }
         if c == '"' { quoted = true; out.push(c); i++; continue; }
