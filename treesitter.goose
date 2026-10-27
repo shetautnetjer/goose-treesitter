@@ -141,10 +141,12 @@ fn rename_metavars(lang: const u8[:], pattern: const u8[:], out: u8[>..]&) {
         if triple_ok && (c == '"' || c == '\'') && i + 2 < pattern.len && pattern[i + 1] == c && pattern[i + 2] == c {
             var e = i + 3;
             while e < pattern.len && !(e + 2 < pattern.len && pattern[e] == c && pattern[e + 1] == c && pattern[e + 2] == c) {
-                e += (if pattern[e] == '\\' && py { 2 } else { 1 });
+                // Python and Java text blocks take escapes (\"""); Kotlin raw strings do not.
+                e += (if pattern[e] == '\\' && lang != "kotlin" { 2 } else { 1 });
             }
-            // A run of more than three quotes closes with its last three.
-            while e + 3 < pattern.len && pattern[e + 3] == c { e++; }
+            // In Kotlin a run of more than three quotes closes with its last
+            // three; Python and Java close at the first three.
+            if lang == "kotlin" { while e + 3 < pattern.len && pattern[e + 3] == c { e++; } }
             e = min(e + 3, pattern.len);
             out.append(pattern[i..e]);
             i = e;

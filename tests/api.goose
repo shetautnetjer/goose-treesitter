@@ -165,6 +165,18 @@ fn main() {
         treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
     };
     check(captures == "X=value\n", "a Kotlin raw string may hold quotes");
+    compile_ok("python", "foo(\"\"\"a\"\"\"\"\"\"b\"\"\", $X)");
+    captures.clear();
+    treesitter::search("foo(\"\"\"a\"\"\"\"\"\"b\"\"\", value)\n") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "adjacent Python triple-quoted strings close at their first three quotes");
+    compile_ok("java", "foo(\"\"\"\n text \\\"\"\" more\n\"\"\", $X)");
+    captures.clear();
+    treesitter::search("class C { void f() { foo(\"\"\"\n text \\\"\"\" more\n\"\"\", value); } }") { node =>
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+    };
+    check(captures == "X=value\n", "an escaped quote in a Java text block does not end it");
     compile_ok("rust", "foo(r#\"a \"b\" c\"#, $X)");
     captures.clear();
     treesitter::search("fn f() { foo(r#\"a \"b\" c\"#, value); }") { node =>
