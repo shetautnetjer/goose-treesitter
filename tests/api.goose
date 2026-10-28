@@ -76,6 +76,12 @@ fn main() {
     one("gdscript", "print($X)", "func _ready():\n\tprint(name) # print(x)\n", "print(name)\n", "GDScript call");
     one("csharp", "Debug.Log($X)", "class A { void F() { Debug.Log(\"hit\"); Debug.Log(x); } }", "Debug.Log(\"hit\")\nDebug.Log(x)\n", "C# Unity log");
     one("php", "echo $X;", "<?php\necho $name;\necho 'hi';\n", "echo $name;\necho 'hi';\n", "PHP echo with a PHP variable");
+    one("csharp", "Load(@\"C:\\temp\\\", $X)", "class A { void F() { Load(@\"C:\\temp\\\", level); Load(@\"D:\\\", level); } }",
+        "Load(@\"C:\\temp\\\", level)\n", "C# verbatim string with a trailing backslash");
+    one("gdscript", "if $C:\n\tprint(\"\"\"a\nb\"\"\")", "func f():\n\tif ok:\n\t\tprint(\"\"\"a\nb\"\"\")\n",
+        "if ok:\n\t\tprint(\"\"\"a\nb\"\"\")\n", "GDScript multi-line pattern keeps string newlines");
+    one("php", "echo <<<'TXT'\n$X\nTXT;", "<?php\necho <<<'TXT'\n$X\nTXT;\necho <<<'TXT'\nother\nTXT;\n",
+        "echo <<<'TXT'\n$X\nTXT;\n", "PHP nowdoc text is literal");
 
     compile_ok("rust", "$X.unwrap()");
     let source = "fn f() {\n    foo().unwrap();\n    x.y.unwrap();\n}";

@@ -37,7 +37,8 @@ c_sources = ["ts_shim.c",
              "grammars/typescript_scanner.c",
              "grammars/wgsl_parser.c",
              "grammars/wgsl_scanner.c"];
-c_include = ["vendor/tree-sitter/lib/include", "vendor/tree-sitter/lib/src",
-             "vendor/tree-sitter-typescript/typescript/src"];
+// Only the runtime's own folders are on the include path: a grammar's
+// tree_sitter/*.h must be its own version, so no grammar's folder is shared.
+c_include = ["vendor/tree-sitter/lib/include", "vendor/tree-sitter/lib/src", "include"];
 c_libs = ["pthread"];
 exclude = ["examples", "tests", "vendor"];

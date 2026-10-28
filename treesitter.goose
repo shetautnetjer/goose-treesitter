@@ -171,20 +171,72 @@ fn rename_metavars(lang: const u8[:], pattern: const u8[:], out: u8[>..]&) {
         }
         // A triple-quoted string (Python, and Kotlin and Java """), which may
         // hold its quote alone.
-        let triple_ok = py || gd || ((lang == "kotlin" || lang == "java") && c == '"');
+        let triple_ok = py || gd || ((lang == "kotlin" || lang == "java" || lang == "csharp") && c == '"');
         if triple_ok && (c == '"' || c == '\'') && i + 2 < pattern.len && pattern[i + 1] == c && pattern[i + 2] == c {
             var e = i + 3;
             while e < pattern.len && !(e + 2 < pattern.len && pattern[e] == c && pattern[e + 1] == c && pattern[e + 2] == c) {
-                // Python and Java text blocks take escapes (\"""); Kotlin raw strings do not.
-                e += (if pattern[e] == '\\' && lang != "kotlin" { 2 } else { 1 });
+                // Python and Java text blocks take escapes (\"""); Kotlin and C# raw strings do not.
+                e += (if pattern[e] == '\\' && lang != "kotlin" && lang != "csharp" { 2 } else { 1 });
             }
             // In Kotlin a run of more than three quotes closes with its last
             // three; Python and Java close at the first three.
-            if lang == "kotlin" { while e + 3 < pattern.len && pattern[e + 3] == c { e++; } }
+            if lang == "kotlin" || lang == "csharp" { while e + 3 < pattern.len && pattern[e + 3] == c { e++; } }
             e = min(e + 3, pattern.len);
             out.append(pattern[i..e]);
             i = e;
             continue;
+        }
+        // C#: a verbatim string, @"..." (or $@"..." / @$"..."), where a
+        // backslash is text and "" is a quote.
+        if lang == "csharp" && (c == '@' || c == '$') && i + 1 < pattern.len {
+            var q = i + 1;
+            if q < pattern.len && (pattern[q] == '@' || pattern[q] == '$') && pattern[q] != c { q++; }
+            let verbatim = c == '@' || pattern[i + 1] == '@';
+            if verbatim && q < pattern.len && pattern[q] == '"' {
+                var e = q + 1;
+                loop {
+                    guard e < pattern.len else { break; }
+                    if pattern[e] == '"' {
+                        if e + 1 < pattern.len && pattern[e + 1] == '"' { e += 2; continue; }
+                        e++;
+                        break;
+                    }
+                    e++;
+                }
+                out.append(pattern[i..min(e, pattern.len)]);
+                i = min(e, pattern.len);
+                continue;
+            }
+        }
+        // PHP: a heredoc (<<<ID ... ID) or nowdoc (<<<'ID' ... ID), copied
+        // as text up to the line that closes it.
+        if php && c == '<' && i + 3 < pattern.len && pattern[i + 1] == '<' && pattern[i + 2] == '<' {
+            var j = i + 3;
+            while j < pattern.len && (pattern[j] == ' ' || pattern[j] == '\t') { j++; }
+            let quoted = j < pattern.len && (pattern[j] == '\'' || pattern[j] == '"');
+            if quoted { j++; }
+            let id0 = j;
+            while j < pattern.len && is_word(pattern[j..j + 1]) { j++; }
+            if j > id0 {
+                let id = pattern[id0..j];
+                // The closing line: optional indentation, then the identifier.
+                var e = j;
+                var found = false;
+                while !found && e < pattern.len {
+                    let nl = find(pattern[e..], "\n");
+                    guard nl >= 0 else { break; }
+                    var k = e + nl + 1;
+                    while k < pattern.len && (pattern[k] == ' ' || pattern[k] == '\t') { k++; }
+                    if starts_with(pattern[k..], id) && (k + id.len == pattern.len || !is_word(pattern[k + id.len..k + id.len + 1])) {
+                        e = k + id.len;
+                        found = true;
+                    } else { e = k; }
+                }
+                let stop = if found { e } else { pattern.len };
+                out.append(pattern[i..stop]);
+                i = stop;
+                continue;
+            }
         }
         // A string, copied as it is up to its unescaped closing quote.
         if c == '"' || (single && c == '\'') || (js && c == '`') {
@@ -213,6 +265,37 @@ fn rename_metavars(lang: const u8[:], pattern: const u8[:], out: u8[>..]&) {
         else if d == 1 && e > i + 1 { out.append(MV); out.append(pattern[i + 1..e]); }
         else { out.append(pattern[i..e]); }
         i = e;
+    }
+}
+
+// A GDScript pattern with a tab after each newline that is not inside a
+// string ('...', "...", or a triple-quoted one) or a comment.
+fn gd_indent(p: const u8[:], out: u8[>..]&) {
+    var i = 0;
+    while i < p.len {
+        let c = p[i];
+        if c == '#' {
+            while i < p.len && p[i] != '\n' { out.push(p[i]); i++; }
+            continue;
+        }
+        if c == '"' || c == '\'' {
+            let triple = i + 2 < p.len && p[i + 1] == c && p[i + 2] == c;
+            var e = i + (if triple { 3 } else { 1 });
+            loop {
+                guard e < p.len else { break; }
+                if p[e] == '\\' { e += 2; continue; }
+                if triple && e + 2 < p.len && p[e] == c && p[e + 1] == c && p[e + 2] == c { e += 3; break; }
+                if !triple && (p[e] == c || p[e] == '\n') { e++; break; }
+                e++;
+            }
+            e = min(e, p.len);
+            out.append(p[i..e]);
+            i = e;
+            continue;
+        }
+        out.push(c);
+        if c == '\n' { out.push('\t'); }
+        i++;
     }
 }
 
@@ -292,9 +375,10 @@ fn compile(lang: const u8[:], pattern: const u8[:], why: u8[>..]&) -> bool {
         var post: u8[>..] = [];
         context(k, pre, post);
         if k == 7 && lang == "gdscript" && find(renamed, "\n") >= 0 {
-            // Every further line of a GDScript pattern goes inside the function too.
+            // Every further line of a GDScript pattern goes inside the function
+            // too; a newline inside a string is text and stays as it is.
             var ind: u8[>..] = [];
-            format_replaced(ind, renamed, "\n", "\n\t");
+            gd_indent(renamed, ind);
             renamed.clear();
             renamed.append(ind);
         }
