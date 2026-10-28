@@ -78,6 +78,8 @@ fn main() {
     one("php", "echo $X;", "<?php\necho $name;\necho 'hi';\n", "echo $name;\necho 'hi';\n", "PHP echo with a PHP variable");
     one("csharp", "Load(@\"C:\\temp\\\", $X)", "class A { void F() { Load(@\"C:\\temp\\\", level); Load(@\"D:\\\", level); } }",
         "Load(@\"C:\\temp\\\", level)\n", "C# verbatim string with a trailing backslash");
+    one("csharp", "Log(\"\"\"\"a \"\"\" $X b\"\"\"\", $Y)", "class A { void F() { Log(\"\"\"\"a \"\"\" $X b\"\"\"\", v); Log(\"\"\"\"a \"\"\" other b\"\"\"\", v); } }",
+        "Log(\"\"\"\"a \"\"\" $X b\"\"\"\", v)\n", "C# raw string with four quotes may hold three");
     one("gdscript", "if $C:\n\tprint(\"\"\"a\nb\"\"\")", "func f():\n\tif ok:\n\t\tprint(\"\"\"a\nb\"\"\")\n",
         "if ok:\n\t\tprint(\"\"\"a\nb\"\"\")\n", "GDScript multi-line pattern keeps string newlines");
     one("php", "echo <<<'TXT'\n$X\nTXT;", "<?php\necho <<<'TXT'\n$X\nTXT;\necho <<<'TXT'\nother\nTXT;\n",

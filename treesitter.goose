@@ -169,18 +169,36 @@ fn rename_metavars(lang: const u8[:], pattern: const u8[:], out: u8[>..]&) {
                 continue;
             }
         }
+        // C#: a raw string opens with three or more quotes and closes with as
+        // many, so """" ... """" may hold """.
+        if lang == "csharp" && c == '"' && i + 2 < pattern.len && pattern[i + 1] == '"' && pattern[i + 2] == '"' {
+            var n = 0;
+            while i + n < pattern.len && pattern[i + n] == '"' { n++; }
+            var e = i + n;
+            var closed = false;
+            while e < pattern.len && !closed {
+                if pattern[e] == '"' {
+                    var run = 0;
+                    while e + run < pattern.len && pattern[e + run] == '"' { run++; }
+                    if run >= n { e += n; closed = true; } else { e += run; }
+                } else { e++; }
+            }
+            out.append(pattern[i..e]);
+            i = e;
+            continue;
+        }
         // A triple-quoted string (Python, and Kotlin and Java """), which may
         // hold its quote alone.
-        let triple_ok = py || gd || ((lang == "kotlin" || lang == "java" || lang == "csharp") && c == '"');
+        let triple_ok = py || gd || ((lang == "kotlin" || lang == "java") && c == '"');
         if triple_ok && (c == '"' || c == '\'') && i + 2 < pattern.len && pattern[i + 1] == c && pattern[i + 2] == c {
             var e = i + 3;
             while e < pattern.len && !(e + 2 < pattern.len && pattern[e] == c && pattern[e + 1] == c && pattern[e + 2] == c) {
-                // Python and Java text blocks take escapes (\"""); Kotlin and C# raw strings do not.
-                e += (if pattern[e] == '\\' && lang != "kotlin" && lang != "csharp" { 2 } else { 1 });
+                // Python and Java text blocks take escapes (\"""); Kotlin raw strings do not.
+                e += (if pattern[e] == '\\' && lang != "kotlin" { 2 } else { 1 });
             }
             // In Kotlin a run of more than three quotes closes with its last
             // three; Python and Java close at the first three.
-            if lang == "kotlin" || lang == "csharp" { while e + 3 < pattern.len && pattern[e + 3] == c { e++; } }
+            if lang == "kotlin" { while e + 3 < pattern.len && pattern[e + 3] == c { e++; } }
             e = min(e + 3, pattern.len);
             out.append(pattern[i..e]);
             i = e;
