@@ -23,6 +23,13 @@ const TSLanguage *tree_sitter_c(void);
 const TSLanguage *tree_sitter_cpp(void);
 const TSLanguage *tree_sitter_cuda(void);
 const TSLanguage *tree_sitter_kotlin(void);
+const TSLanguage *tree_sitter_lua(void);
+const TSLanguage *tree_sitter_glsl(void);
+const TSLanguage *tree_sitter_hlsl(void);
+const TSLanguage *tree_sitter_wgsl(void);
+const TSLanguage *tree_sitter_gdscript(void);
+const TSLanguage *tree_sitter_c_sharp(void);
+const TSLanguage *tree_sitter_php(void);
 
 static bool is(ts_slice s, const char *name) {
     size_t n = strlen(name);
@@ -40,6 +47,13 @@ static const TSLanguage *language(ts_slice name) {
     if (is(name, "cpp")) return tree_sitter_cpp();
     if (is(name, "cuda")) return tree_sitter_cuda();
     if (is(name, "kotlin")) return tree_sitter_kotlin();
+    if (is(name, "lua")) return tree_sitter_lua();
+    if (is(name, "glsl")) return tree_sitter_glsl();
+    if (is(name, "hlsl")) return tree_sitter_hlsl();
+    if (is(name, "wgsl")) return tree_sitter_wgsl();
+    if (is(name, "gdscript")) return tree_sitter_gdscript();
+    if (is(name, "csharp")) return tree_sitter_c_sharp();
+    if (is(name, "php")) return tree_sitter_php();
     return NULL;
 }
 

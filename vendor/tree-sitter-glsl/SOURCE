@@ -1,0 +1,4 @@
+Copied from https://github.com/tree-sitter-grammars/tree-sitter-glsl at v0.2.0 (e47b8b62b59d0e3529f1c31b03e025d6bd475044):
+LICENSE, src/parser.c, src/scanner.c (if any), src/tree_sitter/. Copied rather than a submodule
+because that repository holds nested submodules (its parent grammars), which a
+recursive clone (goose fetch) cannot follow without their URLs.

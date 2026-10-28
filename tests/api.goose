@@ -48,6 +48,42 @@ fn main() {
     check_parse("c", "int answer(void) { return 42; }");
     check_parse("cpp", "class Answer { public: int value() { return 42; } };");
     check_parse("cuda", "__global__ void kernel(int *x) { x[0] = 1; } void f(int *x) { kernel<<<1, 32>>>(x); }");
+    check_parse("lua", "local function answer() return 42 end\n");
+    check_parse("glsl", "#version 450\nvoid main() { gl_Position = vec4(0.0); }\n");
+    check_parse("hlsl", "float4 main(float4 p : POSITION) : SV_POSITION { return p; }\n");
+    check_parse("wgsl", "@vertex fn main() -> @builtin(position) vec4<f32> { return vec4<f32>(0.0); }\n");
+    check_parse("gdscript", "extends Node\n\nfunc answer():\n\treturn 42\n");
+    check_parse("csharp", "class Answer { int Value() { return 42; } }\n");
+    check_parse("php", "<?php\nfunction answer() { return 42; }\n");
+    check(treesitter::language_of_path("shaders/lit.frag") == "glsl", "GLSL stage extension");
+    check(treesitter::language_of_path("Assets/Player.cs") == "csharp", "C# extension");
+    check(treesitter::language_of_path("scenes/player.gd") == "gdscript", "GDScript extension");
+
+    // A pattern in each newly added language finds what it should.
+    fn one(lang: const u8[:], pattern: const u8[:], source: const u8[:], want: const u8[:], label: const u8[:]) {
+        var why: u8[>..] = [];
+        let ok = treesitter::compile(lang, pattern, why);
+        check(ok, str(label, ": pattern compiles ", why));
+        var got: u8[>..] = [];
+        if ok { treesitter::search(source) { node => got.append(treesitter::match_text(node)); got.push('\n'); }; }
+        check(got == want, str(label, ": got [", got, "]"));
+    }
+    one("lua", "print($X)", "local a = 1\nprint(a) -- print(b)\nprint([[$Y]])\n", "print(a)\nprint([[$Y]])\n", "Lua call, comments and long strings");
+    one("lua", "local $N = $V", "local x = 1\nlocal y = 'two'\n", "local x = 1\nlocal y = 'two'\n", "Lua locals");
+    one("glsl", "texture($S, $UV)", "void main() { vec4 c = texture(tex, uv); }", "texture(tex, uv)\n", "GLSL texture call");
+    one("hlsl", "mul($A, $B)", "float4 f(float4 p) { return mul(p, world); }", "mul(p, world)\n", "HLSL mul");
+    one("wgsl", "textureSample($T, $S, $UV)", "fn f() -> vec4<f32> { return textureSample(t, s, uv); }", "textureSample(t, s, uv)\n", "WGSL textureSample");
+    one("gdscript", "print($X)", "func _ready():\n\tprint(name) # print(x)\n", "print(name)\n", "GDScript call");
+    one("csharp", "Debug.Log($X)", "class A { void F() { Debug.Log(\"hit\"); Debug.Log(x); } }", "Debug.Log(\"hit\")\nDebug.Log(x)\n", "C# Unity log");
+    one("php", "echo $X;", "<?php\necho $name;\necho 'hi';\n", "echo $name;\necho 'hi';\n", "PHP echo with a PHP variable");
+    one("csharp", "Load(@\"C:\\temp\\\", $X)", "class A { void F() { Load(@\"C:\\temp\\\", level); Load(@\"D:\\\", level); } }",
+        "Load(@\"C:\\temp\\\", level)\n", "C# verbatim string with a trailing backslash");
+    one("csharp", "Log(\"\"\"\"a \"\"\" $X b\"\"\"\", $Y)", "class A { void F() { Log(\"\"\"\"a \"\"\" $X b\"\"\"\", v); Log(\"\"\"\"a \"\"\" other b\"\"\"\", v); } }",
+        "Log(\"\"\"\"a \"\"\" $X b\"\"\"\", v)\n", "C# raw string with four quotes may hold three");
+    one("gdscript", "if $C:\n\tprint(\"\"\"a\nb\"\"\")", "func f():\n\tif ok:\n\t\tprint(\"\"\"a\nb\"\"\")\n",
+        "if ok:\n\t\tprint(\"\"\"a\nb\"\"\")\n", "GDScript multi-line pattern keeps string newlines");
+    one("php", "echo <<<'TXT'\n$X\nTXT;", "<?php\necho <<<'TXT'\n$X\nTXT;\necho <<<'TXT'\nother\nTXT;\n",
+        "echo <<<'TXT'\n$X\nTXT;\n", "PHP nowdoc text is literal");
 
     compile_ok("rust", "$X.unwrap()");
     let source = "fn f() {\n    foo().unwrap();\n    x.y.unwrap();\n}";
