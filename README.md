@@ -4,8 +4,9 @@
 by the code's structure rather than its text, the way the tool ast-grep does.
 For example `$X.unwrap()` finds every `.unwrap()` call in Rust, whatever is in
 front of it, and can rewrite all of them in one go. It understands
-TypeScript, JavaScript, Python, Rust, Java, Kotlin, C, C++ and CUDA, and
-checks the same patterns as ast-grep with the same results.
+TypeScript, JavaScript, Python, Rust, Java, Kotlin, C, C++, CUDA, and for
+game and 3D code C#, PHP, Lua, GDScript and the GLSL, HLSL and WGSL shading
+languages, and checks the same patterns as ast-grep with the same results.
 
 **Status (2026-10-26):** 52 standalone checks pass (`scripts/test.sh`).
 Swan checks its matches against ast-grep's on real projects (identical on
@@ -16,8 +17,8 @@ package per language) is planned for when a one-language user needs it.
 
 Structural search and rewrite for [Goose](https://aardappel.github.io/goose/)
 programs, ast-grep style, on [tree-sitter](https://tree-sitter.github.io)
-trees: TypeScript/TSX, JavaScript, Python, Rust, Java, Kotlin, C, C++ and
-CUDA.
+trees: TypeScript/TSX, JavaScript, Python, Rust, Java, Kotlin, C, C++, CUDA,
+C#, PHP, Lua, GDScript, GLSL, HLSL and WGSL.
 
 A pattern is code in the target's language with metavariables: `$X` for any
 one named node, `$$$X` for any run of siblings (none included), `$_` and
@@ -45,7 +46,8 @@ treesitter::search(text) { node =>
 ```
 
 - `compile(lang, pattern, why)`: languages `typescript`, `tsx`, `javascript`,
-  `python`, `rust`, `java`, `kotlin`, `c`, `cpp`, `cuda`;
+  `python`, `rust`, `java`, `kotlin`, `c`, `cpp`, `cuda`, `csharp`, `php`,
+  `lua`, `gdscript`, `glsl`, `hlsl`, `wgsl`;
   `language_of_path(path)` picks one by file name.
 - `search(text) { node => }` and, inside it, `match_start`, `match_end`,
   `match_row`, `match_col` (0-based), `match_text`, `each_binding`, and
@@ -61,6 +63,20 @@ See `examples/unwraps.goose`. A local checkout can be used directly with
 Use `git clone --recurse-submodules` when cloning the package yourself:
 the runtime and most grammars are pinned submodules under `vendor/`.
 The CUDA grammar's sources are copied in, as described below.
+
+### Per-language notes
+
+- **PHP:** a pattern is read as PHP code (inside `<?php`). `$name` with a
+  lowercase letter is a PHP variable; metavariables are upper case (`$X`),
+  so PHP's own `$_GET`-style names cannot be written literally in a pattern.
+- **Lua:** `--` comments and `[[ ]]` long strings are understood in patterns.
+- **GDScript:** a statement pattern is read inside a function, so
+  `print($$$A)` works; `#` starts a comment.
+- **WGSL:** reserves names starting with two underscores, so the matcher's
+  internal names start with `zswan_` rather than `__`.
+- **GLSL, HLSL and CUDA:** their grammars' sources are copied into `vendor/`
+  (each folder's SOURCE says from where), because their repositories nest
+  other grammars as submodules a recursive clone cannot follow.
 
 ## Package and build boundary
 

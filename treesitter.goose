@@ -76,6 +76,14 @@ fn language_of_path(p: const u8[:]) -> const u8[:] {
        ends_with(p, ".hh") || ends_with(p, ".hxx") { return "cpp"; }
     if ends_with(p, ".cu") || ends_with(p, ".cuh") { return "cuda"; }
     if ends_with(p, ".kt") || ends_with(p, ".kts") { return "kotlin"; }
+    if ends_with(p, ".lua") { return "lua"; }
+    if ends_with(p, ".glsl") || ends_with(p, ".vert") || ends_with(p, ".frag") || ends_with(p, ".comp") ||
+       ends_with(p, ".geom") || ends_with(p, ".tesc") || ends_with(p, ".tese") { return "glsl"; }
+    if ends_with(p, ".hlsl") || ends_with(p, ".hlsli") || ends_with(p, ".fx") { return "hlsl"; }
+    if ends_with(p, ".wgsl") { return "wgsl"; }
+    if ends_with(p, ".gd") { return "gdscript"; }
+    if ends_with(p, ".cs") { return "csharp"; }
+    if ends_with(p, ".php") { return "php"; }
     return "";
 }
 
@@ -87,8 +95,9 @@ var p_root = -1;
 var p_lang: u8[..32];
 var p_words: u8[>..];           // the pattern's own words, one per line: a file without one cannot match
 
-let MV = "__swan_mv_";          // $X becomes __swan_mv_X
-let MVM = "__swan_mvm_";        // $$$X becomes __swan_mvm_X
+// Not __-prefixed: WGSL reserves identifiers that start with two underscores.
+let MV = "zswan_mv_";          // $X becomes zswan_mv_X
+let MVM = "zswan_mvm_";        // $$$X becomes zswan_mvm_X
 
 // $X and $$$X as identifiers every grammar accepts. A `$` inside a string
 // literal is text (`printf("$HOME")` matches only that string), so it is
@@ -96,18 +105,43 @@ let MVM = "__swan_mvm_";        // $$$X becomes __swan_mvm_X
 // "..." everywhere, with Python/Kotlin/Java triple quotes and Rust raw
 // strings; '...' and `...` strings in Python and JS/TS, where in
 // the C family and Rust '"' is a character (and 'a a Rust lifetime);
-// // and /* */ comments except in Python, which has # (and // for division).
+// // and /* */ comments except in Python, which has # (and // for division);
+// '...' strings in Lua, GDScript and PHP too; # comments in GDScript and PHP;
+// Lua's -- comments and [[ ]] long strings. In PHP, $ followed by a
+// lowercase letter is a PHP variable and left alone; metavariables are
+// upper case ($X), so PHP's own $_GET-style names cannot be written
+// literally in a pattern.
 fn rename_metavars(lang: const u8[:], pattern: const u8[:], out: u8[>..]&) {
     let py = lang == "python";
     let js = lang == "javascript" || lang == "typescript" || lang == "tsx";
+    let lua = lang == "lua";
+    let gd = lang == "gdscript";
+    let php = lang == "php";
+    let hash = py || gd || php;          // # starts a comment (in PHP, not #[ attributes)
+    let single = py || js || lua || gd || php;   // '...' is a string, not a character
     var i = 0;
     while i < pattern.len {
         let c = pattern[i];
         // A comment, copied as it is.
-        let slash_comment = !py && c == '/' && i + 1 < pattern.len && (pattern[i + 1] == '/' || pattern[i + 1] == '*');
-        if slash_comment || (py && c == '#') {
-            let line = py || pattern[i + 1] == '/';
-            var e = i + (if py { 1 } else { 2 });
+        // Lua: -- to the end of the line, --[[ ]] (or --[==[ ]==]) a block.
+        if lua && c == '-' && i + 1 < pattern.len && pattern[i + 1] == '-' {
+            var e = i + 2;
+            let long = lua_long_bracket(pattern, e);
+            if long > 0 { e = long; } else { while e < pattern.len && pattern[e] != '\n' { e++; } }
+            out.append(pattern[i..e]);
+            i = e;
+            continue;
+        }
+        // A Lua long string, [[ ]] or [==[ ]==].
+        if lua && c == '[' {
+            let long = lua_long_bracket(pattern, i);
+            if long > 0 { out.append(pattern[i..long]); i = long; continue; }
+        }
+        let slash_comment = !py && !lua && !gd && c == '/' && i + 1 < pattern.len && (pattern[i + 1] == '/' || pattern[i + 1] == '*');
+        let hash_comment = hash && c == '#' && !(php && i + 1 < pattern.len && pattern[i + 1] == '[');
+        if slash_comment || hash_comment {
+            let line = hash_comment || pattern[i + 1] == '/';
+            var e = i + (if hash_comment { 1 } else { 2 });
             while e < pattern.len && !(if line { pattern[e] == '\n' } else { pattern[e] == '/' && pattern[e - 1] == '*' && e > i + 2 }) { e++; }
             if e < pattern.len && !line { e++; }
             out.append(pattern[i..e]);
@@ -137,7 +171,7 @@ fn rename_metavars(lang: const u8[:], pattern: const u8[:], out: u8[>..]&) {
         }
         // A triple-quoted string (Python, and Kotlin and Java """), which may
         // hold its quote alone.
-        let triple_ok = py || ((lang == "kotlin" || lang == "java") && c == '"');
+        let triple_ok = py || gd || ((lang == "kotlin" || lang == "java") && c == '"');
         if triple_ok && (c == '"' || c == '\'') && i + 2 < pattern.len && pattern[i + 1] == c && pattern[i + 2] == c {
             var e = i + 3;
             while e < pattern.len && !(e + 2 < pattern.len && pattern[e] == c && pattern[e + 1] == c && pattern[e + 2] == c) {
@@ -153,7 +187,7 @@ fn rename_metavars(lang: const u8[:], pattern: const u8[:], out: u8[>..]&) {
             continue;
         }
         // A string, copied as it is up to its unescaped closing quote.
-        if c == '"' || ((py || js) && c == '\'') || (js && c == '`') {
+        if c == '"' || (single && c == '\'') || (js && c == '`') {
             var e = i + 1;
             while e < pattern.len && pattern[e] != c { e += (if pattern[e] == '\\' { 2 } else { 1 }); }
             e = min(e + 1, pattern.len);
@@ -180,6 +214,26 @@ fn rename_metavars(lang: const u8[:], pattern: const u8[:], out: u8[>..]&) {
         else { out.append(pattern[i..e]); }
         i = e;
     }
+}
+
+// Where a Lua long bracket that opens at `at` ([[, [=[, [==[ ...) ends, just
+// past its closing bracket; 0 when there is none at `at`.
+fn lua_long_bracket(p: const u8[:], at: i64) -> i64 {
+    guard at < p.len && p[at] == '[' else { return 0; }
+    var lv = 0;
+    var j = at + 1;
+    while j < p.len && p[j] == '=' { lv++; j++; }
+    guard j < p.len && p[j] == '[' else { return 0; }
+    j++;
+    while j < p.len {
+        if p[j] == ']' {
+            var k = 0;
+            while j + 1 + k < p.len && p[j + 1 + k] == '=' { k++; }
+            if k == lv && j + 1 + k < p.len && p[j + 1 + k] == ']' { return j + 2 + k; }
+        }
+        j++;
+    }
+    return p.len;
 }
 
 fn is_word(s: const u8[:]) -> bool {
@@ -209,10 +263,15 @@ fn solid(n: const i32[:], i: i64) -> i64 {
 // take items at the top of a file, so `$X.unwrap()` needs the function.
 fn context(k: i64, pre: u8[>..]&, post: u8[>..]&) {
     match k {
-        1 => { pre.append("fn __swan_ctx() {\n"); post.append("\n}"); },
-        2 => { pre.append("void __swan_ctx() {\n"); post.append(";\n}"); },
-        3 => { pre.append("class __SwanCtx { void __swan_ctx() {\n"); post.append(";\n} }"); },
-        4 => { pre.append("class __SwanCtx {\n"); post.append("\n}"); },
+        1 => { pre.append("fn zswan_ctx() {\n"); post.append("\n}"); },
+        2 => { pre.append("void zswan_ctx() {\n"); post.append(";\n}"); },
+        3 => { pre.append("class ZSwanCtx { void zswan_ctx() {\n"); post.append(";\n} }"); },
+        4 => { pre.append("class ZSwanCtx {\n"); post.append("\n}"); },
+        5 => { pre.append("<?php\n"); },                            // PHP code needs its opening tag
+        6 => { pre.append("<?php\nfunction zswan_ctx() {\n"); post.append(";\n}"); },
+        7 => { pre.append("func zswan_ctx():\n\t"); },             // GDScript: a statement in a function
+        8 => { pre.append("fn zswan_ctx() {\n"); post.append(";\n}"); },      // WGSL: statements end in ;
+        9 => { pre.append("fn zswan_ctx() {\nlet zswan_v = "); post.append(";\n}"); },   // WGSL: an expression
         _ => {},
     }
 }
@@ -225,10 +284,20 @@ fn compile(lang: const u8[:], pattern: const u8[:], why: u8[>..]&) -> bool {
     rename_metavars(lang, trim(pattern), renamed);
     p_lang.clear();
     format(p_lang, lang);
-    for k in 0..5 {
+    for k in 0..10 {
+        // Outside <?php, PHP's grammar reads text as HTML, which "parses";
+        // a PHP pattern is only ever read as PHP.
+        if lang == "php" && k < 5 { continue; }
         var pre: u8[>..] = [];
         var post: u8[>..] = [];
         context(k, pre, post);
+        if k == 7 && lang == "gdscript" && find(renamed, "\n") >= 0 {
+            // Every further line of a GDScript pattern goes inside the function too.
+            var ind: u8[>..] = [];
+            format_replaced(ind, renamed, "\n", "\n\t");
+            renamed.clear();
+            renamed.append(ind);
+        }
         var text: u8[>..] = [];
         format(text, pre, renamed, post);
         guard parse(lang, text, p_nodes) else { format(why, "no tree-sitter grammar for ", lang); return false; }
@@ -239,7 +308,7 @@ fn compile(lang: const u8[:], pattern: const u8[:], why: u8[>..]&) -> bool {
         for i in 0..n {
             if (flags(p_nodes, i) & F_ERROR) != 0 {
                 let t = trim(text[start(p_nodes, i)..end(p_nodes, i)]);
-                if !(starts_with(t, "__swan_mv") && is_word(t)) { bad = true; }
+                if !(starts_with(t, "zswan_mv") && is_word(t)) { bad = true; }
             }
         }
         // The outermost node that is exactly the pattern (or it and a `;`).
@@ -276,7 +345,7 @@ fn compile(lang: const u8[:], pattern: const u8[:], why: u8[>..]&) -> bool {
                         if !starts { j++; continue; }
                         var e = j;
                         while e < leaf.len && is_word(leaf[e..e + 1]) { e++; }
-                        if !starts_with(leaf[j..e], "__swan_mv") { p_words.append(leaf[j..e]); p_words.push('\n'); }
+                        if !starts_with(leaf[j..e], "zswan_mv") { p_words.append(leaf[j..e]); p_words.push('\n'); }
                         j = e;
                     }
                 }
