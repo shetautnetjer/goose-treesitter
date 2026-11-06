@@ -39,9 +39,16 @@ In your root file:
 import treesitter from "shetautnetjer/goose-treesitter@v0.1.4";
 ```
 
-The example uses the published `v0.1.4` tag. For fixes newer than that tag,
-pin the reviewed commit explicitly; a checkout's passing tests do not update
-an already published tag or an installed Swan executable.
+The example uses the published `v0.1.4` tag, which lacks the empty-variadic
+comma-omission fix (`call($X, $$$A)` matching `call(x)`). To use that fix,
+pin the reviewed revision explicitly:
+
+```goose
+import treesitter from "shetautnetjer/goose-treesitter@59313e9da0b9f1cce8df83cabe53ed73fa92345c";
+```
+
+A checkout's passing tests do not update an already published tag or an
+installed Swan executable.
 
 ```goose
 var why: u8[>..] = [];
