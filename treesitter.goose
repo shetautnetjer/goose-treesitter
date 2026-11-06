@@ -5,7 +5,7 @@
 // text both times. The grammars and the runtime are C (ts_shim.c), reached
 // through an opaque handle and plain slices.
 //
-//   import treesitter from "shetautnetjer/goose-treesitter@v0.1.2";   // root file
+//   import treesitter from "shetautnetjer/goose-treesitter@v0.1.4";   // published tag; pin a reviewed commit for newer fixes
 //   var why: u8[>..] = [];
 //   guard treesitter::compile("rust", "$X.unwrap()", why) else { ... }
 //   treesitter::search(source_text) { node =>
@@ -561,6 +561,13 @@ recursive fn match_seq(p: i64, t: i64) -> bool {
     if meta(p, name) == 3 {
         if bind(name, -1, -1) && match_seq(pn, t) { return true; }
         nb = mark;
+        // An empty list capture has no following separator: `{ $$$A, key:
+        // value }` must also match `{ key: value }`. Only an empty capture
+        // may omit the comma; ordinary punctuation still has to match.
+        if pn >= 0 && (flags(p_nodes, pn) & F_NAMED) == 0 && ptext(pn) == "," {
+            if bind(name, -1, -1) && match_seq(solid(p_nodes, next(p_nodes, pn)), t) { return true; }
+            nb = mark;
+        }
         var last = t;
         while last >= 0 {
             if bind(name, t, last) && match_seq(pn, solid(t_nodes, next(t_nodes, last))) { return true; }
@@ -568,6 +575,12 @@ recursive fn match_seq(p: i64, t: i64) -> bool {
             last = solid(t_nodes, next(t_nodes, last));
         }
         return false;
+    }
+    // Likewise the separator before an empty trailing capture disappears:
+    // `call($X, $$$A)` matches `call(x)`, with A bound to empty text.
+    if (flags(p_nodes, p) & F_NAMED) == 0 && ptext(p) == "," && pn >= 0 && meta(pn, name) == 3 {
+        if bind(name, -1, -1) && match_seq(solid(p_nodes, next(p_nodes, pn)), t) { return true; }
+        nb = mark;
     }
     guard t >= 0 else { return false; }
     if match_node(p, t) && match_seq(pn, solid(t_nodes, next(t_nodes, t))) { return true; }
