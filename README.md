@@ -6,14 +6,17 @@ For example `$X.unwrap()` finds every `.unwrap()` call in Rust, whatever is in
 front of it, and can rewrite all of them in one go. It understands
 TypeScript, JavaScript, Python, Rust, Java, Kotlin, C, C++, CUDA, and for
 game and 3D code C#, PHP, Lua, GDScript and the GLSL, HLSL and WGSL shading
-languages, and checks the same patterns as ast-grep with the same results.
+languages. Its pattern syntax follows ast-grep; the tests check selected
+matching cases rather than promising complete parity.
 
-**Status (2026-10-26):** 52 standalone checks pass (`scripts/test.sh`).
-Swan checks its matches against ast-grep's on real projects (identical on
-every case it tests). Searching a 2,361-file project takes about 0.14 s, on
-all cores. Building it the first time takes about 8 s, then it is cached. It
-builds all ten grammars even if you use one; a per-language split (one
-package per language) is planned for when a one-language user needs it.
+**Validation:** run `scripts/test.sh` for this checkout's standalone checks
+and current count. Swan separately checks selected patterns against known
+answers and ast-grep; those cases do not establish complete matching parity.
+Historical measurements on October 26, 2026 found about 0.14 s for one
+2,361-file search and about 8 s for that parser bundle's cold build. These
+are workload-specific measurements, not guarantees for the current bundle.
+All bundled grammars build even if only one is selected; per-language builds
+remain a possible improvement, not an implemented feature.
 
 Structural search and rewrite for [Goose](https://aardappel.github.io/goose/)
 programs, ast-grep style, on [tree-sitter](https://tree-sitter.github.io)
@@ -33,8 +36,19 @@ an if with an else).
 In your root file:
 
 ```goose
-import treesitter from "shetautnetjer/goose-treesitter@v0.1.2";
+import treesitter from "shetautnetjer/goose-treesitter@v0.1.4";
 ```
+
+The example uses the published `v0.1.4` tag, which lacks the empty-variadic
+comma-omission fix (`call($X, $$$A)` matching `call(x)`). To use that fix,
+pin the reviewed revision explicitly:
+
+```goose
+import treesitter from "shetautnetjer/goose-treesitter@59313e9da0b9f1cce8df83cabe53ed73fa92345c";
+```
+
+A checkout's passing tests do not update an already published tag or an
+installed Swan executable.
 
 ```goose
 var why: u8[>..] = [];
@@ -86,7 +100,7 @@ FFI shim are C. This is an independently importable Goose package with a C
 parser backend, not a rewrite of tree-sitter in Goose. It needs no Swan,
 SQLite, SCIP indexer, language server, Node or Rust toolchain to search text.
 
-Plan for **all ten bundled grammars** (TypeScript and TSX count separately),
+Plan for **all bundled grammars** (TypeScript and TSX count separately),
 their scanners and the tree-sitter runtime to compile on a cold build.
 With the installed Goose v2026.3 compiler, even an otherwise unused
 `treesitter` import triggers that native build; using only

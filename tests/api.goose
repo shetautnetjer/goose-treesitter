@@ -30,6 +30,26 @@ fn check_parse(lang: const u8[:], source: const u8[:]) {
     check(errors == 0, str(lang, " valid snippet has no error/missing node"));
 }
 
+// Check exact matches, capture text and rewrite output together: a wildcard
+// must not obtain a passing match by swallowing a separator or fixed operand.
+fn check_variadic(lang: const u8[:], pattern: const u8[:], source: const u8[:],
+                  want_matches: const u8[:], want_captures: const u8[:],
+                  template: const u8[:], want_rewrites: const u8[:], label: const u8[:]) {
+    compile_ok(lang, pattern);
+    var matches: u8[>..] = [];
+    var captures: u8[>..] = [];
+    var rewrites: u8[>..] = [];
+    treesitter::search(source) { node =>
+        format(matches, treesitter::match_text(node), "\n");
+        treesitter::each_binding() { name, text => format(captures, name, "=", text, "\n"); };
+        treesitter::fill_template(template, rewrites);
+        rewrites.push('\n');
+    };
+    check(matches == want_matches, str(label, ": exact matches [", matches, "]"));
+    check(captures == want_captures, str(label, ": exact captures [", captures, "]"));
+    check(rewrites == want_rewrites, str(label, ": exact rewrites [", rewrites, "]"));
+}
+
 fn main() {
     let a = args();
     check(a.len == 2, "runner supplies a scratch directory");
@@ -124,6 +144,45 @@ fn main() {
     };
     check(captures == "A=\nA=first, second\n", "variadic capture accepts empty and multiple arguments");
     check(rewrites == "trace()\ntrace(first, second)\n", "variadic rewrite preserves argument text");
+
+    check_variadic("python", "os.system($X, $$$REST)",
+        "os.system(cmd)\nos.system(cmd, env)\nos.system(cmd, env, flags)\nos.system()\nos.exec(cmd)\n",
+        "os.system(cmd)\nos.system(cmd, env)\nos.system(cmd, env, flags)\n",
+        "X=cmd\nREST=\nX=cmd\nREST=env\nX=cmd\nREST=env, flags\n",
+        "run($X, [$$$REST])", "run(cmd, [])\nrun(cmd, [env])\nrun(cmd, [env, flags])\n",
+        "trailing variadic omits only its empty separator");
+    check_variadic("typescript", "spawn($A, $B, { $$$OPTIONS, shell: true })",
+        str("spawn(cmd, args, { shell: true }); spawn(cmd, args, { cwd: dir, shell: true }); ",
+            "spawn(cmd, args, { cwd: dir, env: vars, shell: true }); ",
+            "spawn(cmd, args, { shell: false }); spawn(cmd, args, {});"),
+        str("spawn(cmd, args, { shell: true })\nspawn(cmd, args, { cwd: dir, shell: true })\n",
+            "spawn(cmd, args, { cwd: dir, env: vars, shell: true })\n"),
+        "A=cmd\nB=args\nOPTIONS=\nA=cmd\nB=args\nOPTIONS=cwd: dir\nA=cmd\nB=args\nOPTIONS=cwd: dir, env: vars\n",
+        "options($$$OPTIONS)", "options()\noptions(cwd: dir)\noptions(cwd: dir, env: vars)\n",
+        "leading object variadic preserves required property");
+    check_variadic("typescript", "f(first, $$$M, last)",
+        "f(first, last); f(first, a, last); f(first, a, b, last); f(first); f(last); f(first, other);",
+        "f(first, last)\nf(first, a, last)\nf(first, a, b, last)\n",
+        "M=\nM=a\nM=a, b\n", "middle($$$M)", "middle()\nmiddle(a)\nmiddle(a, b)\n",
+        "middle variadic collapses one separator and keeps both fixed arguments");
+    check_variadic("typescript", "f($$$M, last)",
+        "f(last); f(a, last); f(a, b, last); f(); f(other);",
+        "f(last)\nf(a, last)\nf(a, b, last)\n",
+        "M=\nM=a\nM=a, b\n", "prefix($$$M)", "prefix()\nprefix(a)\nprefix(a, b)\n",
+        "leading argument variadic accepts zero one or many arguments");
+    check_variadic("typescript", "pair(f(start, $$$A), f(start, $$$A))",
+        "pair(f(start), f(start)); pair(f(start, x), f(start, x)); pair(f(start), f(start, x));",
+        "pair(f(start), f(start))\npair(f(start, x), f(start, x))\n",
+        "A=\nA=x\n", "same($$$A)", "same()\nsame(x)\n",
+        "repeated variadic keeps empty and nonempty binding equality");
+    one("python", "os.system($X, $$$)", "os.system(cmd)\nos.system(cmd, env)\nos.system()\n",
+        "os.system(cmd)\nos.system(cmd, env)\n", "Swan anonymous trailing-comma canary");
+    one("typescript", "spawn($A, $B, { $$$, shell: true })",
+        "spawn(cmd, args, { shell: true }); spawn(cmd, args, { cwd: dir, shell: true }); spawn(cmd, args, { shell: false });",
+        "spawn(cmd, args, { shell: true })\nspawn(cmd, args, { cwd: dir, shell: true })\n",
+        "Swan anonymous leading-comma canary");
+    one("typescript", "f(first, last)", "f(first, last); f(first); f(last); f(first, other);",
+        "f(first, last)\n", "commas and arguments remain required without a variadic");
 
     compile_ok("rust", "$_.unwrap()");
     count = 0;

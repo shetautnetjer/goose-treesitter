@@ -1,0 +1,20 @@
+{
+  "status": "PASS",
+  "base_revision": "443bb65439daf6b4ca20acdc9fb5fcbb7382dfc9",
+  "before_exit": 1,
+  "after_exit": 0,
+  "lab": "/home/cua/swan-package-m1RBGOcY/matcher-fix-dhq7zau9",
+  "files": {
+    "treesitter.goose": "cc110a9203fe462306db917ced78aeba9f92b6aee7600cbb5c31163c8d41496a",
+    "tests/api.goose": "d3722801c7512c2c9f91e332049b78e8206d992694f97cb365b1c89ba07b23d4",
+    "README.md": "b785f31a2935d431a497097ed24fdf26a4f6033512e0d62dce8a036cb3cf6a5e"
+  },
+  "after_log_tail": [
+    "ok: a quote in a Python comment leaves the pattern alone",
+    "ok: a pattern comment does not hide a match",
+    "ok: write control-byte fixture",
+    "ok: control bytes in captures keep every match whole",
+    "ok: an unreadable path is skipped; the next file still parses",
+    "PASS: 136 standalone tree-sitter checks"
+  ]
+}
